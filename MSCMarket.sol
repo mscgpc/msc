@@ -9,6 +9,7 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import {_GPC, _ROUTER,_WBNB,_USDC,_USDT,DEAD_WALLET} from "./Const.sol";
+import "./IMSC.sol";
 
 contract MSCMarket is Ownable,ReentrancyGuard{
 
@@ -70,10 +71,10 @@ contract MSCMarket is Ownable,ReentrancyGuard{
     }
 
 
-    function  setPrice(uint256 price) external nonReentrant{
+    function  setPrice() external nonReentrant{
         require(msg.sender==msc,'msc error');
         if(lastPrice==0){
-            lastPrice = price;
+            lastPrice = IMSC(msc).mscPrice(15 minutes);
             return;
         }
         // 触发交易
@@ -84,17 +85,17 @@ contract MSCMarket is Ownable,ReentrancyGuard{
                 uint256 fee = IERC20(msc).balanceOf(address(this))* SELL_RATE/1000;
                 swapTokenForUSDT(fee,address(this));
             }
-            lastPrice = price;
+            lastPrice = IMSC(msc).mscPrice(15 minutes);
             return;
         }
-        uint256 currentPrice =price;
+        uint256 currentPrice =IMSC(msc).mscPrice(15 minutes);
         if(currentPrice>=lastPrice*(100+SELL_PRICE)/100){
             if(IERC20(msc).balanceOf(address(this))>0){
                 uint256 fee = IERC20(msc).balanceOf(address(this))* SELL_RATE/1000;       
                 swapTokenForUSDT(fee,address(this));
             }
             lastPrice = currentPrice;
-        }else if(currentPrice<=lastPrice*(100-BUY_PRICE)/100){
+        }else if(currentPrice<=lastPrice*(100-BUY_PRICE)/1000){
             if(usdt.balanceOf(address(this)) >0){
                 swapUSDTForToken(usdt.balanceOf(address(this))*BUY_RATE/1000, address(this));
             }

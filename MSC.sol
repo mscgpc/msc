@@ -319,7 +319,7 @@ contract MSC is ExcludedFromFeeList, BaseGpc, ReentrancyGuard, ERC20 {
             emit BurnExpireAllFailed(starAddress);
         }
         (bool success2, ) = marketAddress.call(
-            abi.encodeWithSignature("setPrice(uint256)",mscPriceInner())
+            abi.encodeWithSignature("setPrice()")
         );
         if (!success2) {
             emit SetPriceFailed(marketAddress);
