@@ -74,7 +74,7 @@ contract MSCMarket is Ownable,ReentrancyGuard{
     function  setPrice() external nonReentrant{
         require(msg.sender==msc,'msc error');
         if(lastPrice==0){
-            lastPrice = IMSC(msc).mscPrice(15 minutes);
+            lastPrice = IMSC(msc).mscPriceTime(15 minutes);
             return;
         }
         // 触发交易
@@ -85,10 +85,10 @@ contract MSCMarket is Ownable,ReentrancyGuard{
                 uint256 fee = IERC20(msc).balanceOf(address(this))* SELL_RATE/1000;
                 swapTokenForUSDT(fee,address(this));
             }
-            lastPrice = IMSC(msc).mscPrice(15 minutes);
+            lastPrice = IMSC(msc).mscPriceTime(15 minutes);
             return;
         }
-        uint256 currentPrice =IMSC(msc).mscPrice(15 minutes);
+        uint256 currentPrice =IMSC(msc).mscPriceTime(15 minutes);
         if(currentPrice>=lastPrice*(100+SELL_PRICE)/100){
             if(IERC20(msc).balanceOf(address(this))>0){
                 uint256 fee = IERC20(msc).balanceOf(address(this))* SELL_RATE/1000;       
