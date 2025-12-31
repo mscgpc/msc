@@ -94,7 +94,7 @@ contract MorningStar is Ownable,ReentrancyGuard{
 
     uint256 public constant LEVEL_3_RATE = 300;
 
-    uint256 public constant MAX_PRICE_LENGTH = 100;
+    uint256 public constant MAX_PRICE_LENGTH = 50;
 
     uint256 public constant REDIRECT = 5;
 
@@ -160,7 +160,7 @@ contract MorningStar is Ownable,ReentrancyGuard{
     address public uniswapV2PairGpc;
 
     modifier onlyEOA() {
-        require(tx.origin == msg.sender || msg.sender==msc, "EOA");
+        require(tx.origin == msg.sender, "EOA");
         _;
     }
 
@@ -221,7 +221,7 @@ contract MorningStar is Ownable,ReentrancyGuard{
         return refferals[_address].length;
     }
 
-    function bindReferral(address _referral,address _user) public virtual onlyEOA{
+    function bindReferral(address _referral,address _user) public virtual {
         if(_referral == getRootAddress()){
             // 根目录只能是管理员加
             require(rootAdd==_user,'need root');
@@ -435,7 +435,9 @@ contract MorningStar is Ownable,ReentrancyGuard{
         uint256 tui = star * REDIRECT/MAX_PRICE_LENGTH;
         address parent = getReferral(user);
         if(parent != address(this)){
-            mint(parent,tui,0,price,2);
+            if(tui <= balances[parent]){
+                mint(parent,tui,0,price,2);
+            }
         }
       
         burnExpireAll();

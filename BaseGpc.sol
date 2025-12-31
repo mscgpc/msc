@@ -16,10 +16,6 @@ contract Distributor {
 abstract contract BaseGpc {
     bool public inSwapAndLiquify;
 
-    uint256 public constant MAX_PRICE_LENGTH = 100;
-   
-
-
     IPancakeRouter02 constant uniswapV2Router = IPancakeRouter02(_ROUTER);
     address public immutable uniswapV2Pair;
     Distributor public immutable distributor;
@@ -237,17 +233,15 @@ function calculateTWAP(uint256 duration) internal view returns (uint256 twap) {
 }
      
     function  mscPrice() external view returns(uint256){
-        uint256 price= calculateTWAP(6 hours);
-        if(price==0){
-            return mscPriceInner();
-        }
-        return price;
+        return mscPriceTime(6 hours);
     }
 
-     function  mscPriceTime(uint256 time) external view returns(uint256){
+     function  mscPriceTime(uint256 time) public view returns(uint256){
         uint256 price= calculateTWAP(time);
         if(price==0){
-            return mscPriceInner();
+            uint256 latestIdx = _tail == 0 ? MAX_CAPACITY - 1 : _tail - 1;
+            price = _priceQueue[latestIdx].price;
+            if(price == 0) price = mscPriceInner();
         }
         return price;
     }
