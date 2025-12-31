@@ -237,7 +237,15 @@ function calculateTWAP(uint256 duration) internal view returns (uint256 twap) {
 }
      
     function  mscPrice() external view returns(uint256){
-        uint256 price= calculateTWAP(24 hours);
+        uint256 price= calculateTWAP(6 hours);
+        if(price==0){
+            return mscPriceInner();
+        }
+        return price;
+    }
+
+     function  mscPriceTime(uint256 time) external view returns(uint256){
+        uint256 price= calculateTWAP(time);
         if(price==0){
             return mscPriceInner();
         }
