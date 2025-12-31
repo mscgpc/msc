@@ -94,7 +94,7 @@ contract MorningStar is Ownable,ReentrancyGuard{
 
     uint256 public constant LEVEL_3_RATE = 300;
 
-    uint256 public constant MAX_PRICE_LENGTH = 50;
+    uint256 public constant MAX_PRICE_LENGTH = 100;
 
     uint256 public constant REDIRECT = 5;
 
@@ -116,7 +116,7 @@ contract MorningStar is Ownable,ReentrancyGuard{
     uint256 public constant V4 = 20;
 
     uint256 public constant  V5_STAR = 5000000 ether;
-    uint256 public constant V5 = 25;
+    uint256 public constant V5 = 30;
 
     uint256 public constant UNSTAKE_COLD_TIME = 24 hours; 
     uint256 public constant MAX_UNSTAKE_TIME = 180 days;
@@ -144,7 +144,7 @@ contract MorningStar is Ownable,ReentrancyGuard{
 
     address[] public joinedAddress;
     uint256 public expireIndex;
-    uint256 public  constant MAX_CIRCLE=100;
+    uint256 public  constant MAX_CIRCLE=50;
     uint256 public immutable D_MAX=30;
 
 

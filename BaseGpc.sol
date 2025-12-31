@@ -25,10 +25,10 @@ abstract contract BaseGpc {
     IPancakePair internal uniswapV2PairUsdt;
 
     // ========== 核心配置（可根据业务调整） ==========
-    // 循环数组最大容量（比如存储1440个价格点，每1分钟一个，覆盖24小时）
-    uint256 public constant MAX_CAPACITY = 1440;
+    // 循环数组最大容量（比如存储17280个价格点，每5钟一个，覆盖24小时）
+    uint256 public constant MAX_CAPACITY = 17280;
     // 价格更新的最小时间间隔（防止高频更新，单位：秒）
-    uint256 public constant MIN_UPDATE_INTERVAL = 60; // 分钟
+    uint256 public constant MIN_UPDATE_INTERVAL = 5; // 秒
 
     // ========== 循环数组存储 ==========
     // 存储价格点：价格（wei）+ 时间戳（uint256）
