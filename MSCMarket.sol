@@ -95,7 +95,7 @@ contract MSCMarket is Ownable,ReentrancyGuard{
                 swapTokenForUSDT(fee,address(this));
             }
             lastPrice = currentPrice;
-        }else if(currentPrice<=lastPrice*(100-BUY_PRICE)/1000){
+        }else if(currentPrice<=lastPrice*(100-BUY_PRICE)/100){
             if(usdt.balanceOf(address(this)) >0){
                 swapUSDTForToken(usdt.balanceOf(address(this))*BUY_RATE/1000, address(this));
             }
