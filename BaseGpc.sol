@@ -25,7 +25,7 @@ abstract contract BaseGpc {
     IPancakePair internal uniswapV2PairUsdt;
 
     // ========== 核心配置（可根据业务调整） ==========
-    // 循环数组最大容量（比如存储17280个价格点，每5钟一个，覆盖24小时）
+    // 循环数组最大容量（比如存储17280个价格点，每5秒一个，覆盖24小时）
     uint256 public constant MAX_CAPACITY = 17280;
     // 价格更新的最小时间间隔（防止高频更新，单位：秒）
     uint256 public constant MIN_UPDATE_INTERVAL = 5; // 秒
@@ -175,18 +175,22 @@ function calculateTWAP(uint256 duration) internal view returns (uint256 twap) {
     uint256 totalWeightedPrice; // 总加权价格
     uint256 totalWeight;        // 总时间权重
     uint256 currentIdx = _head; // 遍历起始索引（最旧数据）
+    uint256 traversedCount = 0; // 【改动1：新增遍历计数，解决满缓冲区遍历问题】
 
     // ========== 2. 第一步：跳过所有 < startTime 的无效价格点（批量跳过，而非逐次判断） ==========
     // 循环条件：当前点时间 < startTime 且未遍历完所有点
-    while (currentIdx != _tail && _priceQueue[currentIdx].timestamp < startTime) {
+   // ========== 2. 第一步：跳过所有 < startTime 的无效价格点（批量跳过，而非逐次判断） ==========
+    // 【改动2：替换终止条件为 traversedCount < _count，兼容满缓冲区】
+    while (traversedCount < _count && _priceQueue[currentIdx].timestamp < startTime) {
         currentIdx = (currentIdx + 1) % MAX_CAPACITY;
+        traversedCount++; // 【改动3：遍历计数+1】
     }
 
     // ========== 3. 第二步：仅计算 [startTime, endTime] 范围内的价格点（找到边界立即终止） ==========
     // 记录上一个价格点的时间戳（用于计算权重）
     uint256 prevTimestamp = startTime;
     // 遍历条件：未遍历完所有点 + 当前点时间 <= endTime
-    while (currentIdx != _tail && _priceQueue[currentIdx].timestamp <= endTime) {
+    while (traversedCount < _count && _priceQueue[currentIdx].timestamp <= endTime) {
         PricePoint storage point = _priceQueue[currentIdx];
         
         // 计算当前价格点的时间权重：当前点时间 - 上一个点时间（确保权重在[startTime, endTime]内）
@@ -202,6 +206,7 @@ function calculateTWAP(uint256 duration) internal view returns (uint256 twap) {
         // 更新上一个时间戳为当前点时间，移动到下一个点
         prevTimestamp = point.timestamp;
         currentIdx = (currentIdx + 1) % MAX_CAPACITY;
+        traversedCount++; // 【改动5：遍历计数+1】
     }
 
     // ========== 4. 第三步：处理最后一个价格点到endTime的权重 ==========
@@ -210,18 +215,20 @@ function calculateTWAP(uint256 duration) internal view returns (uint256 twap) {
         uint256 lastWeight = endTime - prevTimestamp;
         if (lastWeight > 0) {
             // 最后一个价格点的索引：currentIdx的前一个（因为上面循环已移动）
-            uint256 lastIdx = currentIdx == _head ? (currentIdx + MAX_CAPACITY - 1) % MAX_CAPACITY : currentIdx - 1;
+                        // 【改动6：统一取模计算lastIdx，解决下溢风险】
+            uint256 lastIdx = (currentIdx + MAX_CAPACITY - 1) % MAX_CAPACITY;
             unchecked {
                 totalWeightedPrice += _priceQueue[lastIdx].price * lastWeight;
                 totalWeight += lastWeight;
             }
+
         }
     }
 
     // ========== 5. 计算最终TWAP（兜底逻辑） ==========
     if (totalWeight == 0) {
         // 无有效价格点时，返回最新价格
-        uint256 latestIdx = _tail == 0 ? MAX_CAPACITY - 1 : _tail - 1;
+        uint256 latestIdx = (_tail + MAX_CAPACITY - 1) % MAX_CAPACITY;
         twap = _priceQueue[latestIdx].price;
     } else {
         unchecked {
