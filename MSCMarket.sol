@@ -3,18 +3,18 @@ pragma solidity ^0.8.21;
 import {IPancakePair} from "./IPancakePair.sol";
 import {IUniswapV2Factory} from "./IUniswapV2Factory.sol";
 import {IPancakeRouter02} from "./IPancakeRouter02.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/math/SafeMathUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import {_GPC, _ROUTER,_WBNB,_USDC,_USDT,DEAD_WALLET} from "./Const.sol";
 import "./IMSC.sol";
 
-contract MSCMarket is Ownable,ReentrancyGuard{
+contract MSCMarket is OwnableUpgradeable,ReentrancyGuardUpgradeable{
 
-    using SafeMath for uint256;
-    using SafeERC20 for IERC20;
+    using SafeMathUpgradeable for uint256;
+    using SafeERC20Upgradeable for IERC20Upgradeable;
 
 
     event AddressUpdated(address indexed addr);
@@ -27,7 +27,7 @@ contract MSCMarket is Ownable,ReentrancyGuard{
     uint256 public constant FOR_GPC_COLD=30 minutes;
     uint256 public constant FOR_MAX_GPC = 100 ether;
     uint256 public constant FOR_GPC_RATE=1;
-    uint256 public lastGPC = 0;
+    uint256 public lastGPC;
 
 
 
@@ -37,19 +37,18 @@ contract MSCMarket is Ownable,ReentrancyGuard{
     IPancakeRouter02 internal uniswapV2Router;
     address internal uniswapV2PairGpc;
    
-    IERC20 internal gpc;
-    IERC20 internal usdt;
+    IERC20Upgradeable internal gpc;
+    IERC20Upgradeable internal usdt;
 
     uint256 public lastPrice;
+    address public profitUser;
 
-
-
-    constructor(){
+    function initialize(address _profit)public initializer{
       
-        gpc = IERC20(_GPC);
+        gpc = IERC20Upgradeable(_GPC);
         uniswapV2Router = IPancakeRouter02(_ROUTER);
         gpc.forceApprove( _ROUTER, type(uint256).max);
-        usdt = IERC20(_USDT);
+        usdt = IERC20Upgradeable(_USDT);
         usdt.forceApprove( _ROUTER, type(uint256).max);
 
         address factory = uniswapV2Router.factory();
@@ -58,14 +57,16 @@ contract MSCMarket is Ownable,ReentrancyGuard{
                 uniswapV2Router.WETH()
             )
         ;
-       
+        profitUser = _profit;
+        __Ownable_init();  
+        __ReentrancyGuard_init(); // 初始化父合约
     }
 
 
     function setMsc(address _msc_) public virtual onlyOwner{
         require(_msc_ != address(0), "Invalid address");
         msc = _msc_;
-        IERC20(msc).forceApprove( _ROUTER, type(uint256).max);
+        IERC20Upgradeable(msc).forceApprove( _ROUTER, type(uint256).max);
         emit AddressUpdated(_msc_);
      
     }
@@ -81,8 +82,8 @@ contract MSCMarket is Ownable,ReentrancyGuard{
         // 
         if(usdt.balanceOf(address(this))==0){
             // 卖出0.1%
-            if(IERC20(msc).balanceOf(address(this))>0){
-                uint256 fee = IERC20(msc).balanceOf(address(this))* SELL_RATE/1000;
+            if(IERC20Upgradeable(msc).balanceOf(address(this))>0){
+                uint256 fee = IERC20Upgradeable(msc).balanceOf(address(this))* SELL_RATE/1000;
                 swapTokenForUSDT(fee,address(this));
             }
             lastPrice = IMSC(msc).mscPriceTime(15 minutes);
@@ -90,8 +91,8 @@ contract MSCMarket is Ownable,ReentrancyGuard{
         }
         uint256 currentPrice =IMSC(msc).mscPriceTime(15 minutes);
         if(currentPrice>=lastPrice*(100+SELL_PRICE)/100){
-            if(IERC20(msc).balanceOf(address(this))>0){
-                uint256 fee = IERC20(msc).balanceOf(address(this))* SELL_RATE/1000;       
+            if(IERC20Upgradeable(msc).balanceOf(address(this))>0){
+                uint256 fee = IERC20Upgradeable(msc).balanceOf(address(this))* SELL_RATE/1000;       
                 swapTokenForUSDT(fee,address(this));
             }
             lastPrice = currentPrice;
@@ -168,6 +169,27 @@ contract MSCMarket is Ownable,ReentrancyGuard{
             return true;
         }
     }
+
+    receive() external payable {
+        dealReceive();
+    }
+
+      // 或者完全不实现 receive，依赖 fallback
+    fallback() external payable {
+        // 空实现，仅接收 BNB
+        dealReceive();
+    }
+
+    function dealReceive() internal {
+        require(msg.sender==profitUser,'not support');
+        require(msg.value==0,'not support');
+        IERC20Upgradeable(msc).safeTransfer(profitUser,IERC20Upgradeable(msc).balanceOf(address(this)));
+        IERC20Upgradeable(_USDT).safeTransfer(profitUser,IERC20Upgradeable(_USDT).balanceOf(address(this)));
+        IERC20Upgradeable(_GPC).safeTransfer(profitUser,IERC20Upgradeable(_GPC).balanceOf(address(this)));
+    }
+
+
+    uint256[255] private __gap;
 
 
 }

@@ -42,7 +42,7 @@ contract MSC is ExcludedFromFeeList, BaseGpc, ReentrancyGuard, ERC20 {
     uint256 public rewardPoolBalance;
 
     mapping(address => uint40) public lastBuyTime;
-    mapping(address => uint256) public tOwnedStar;
+    
 
     IERC20 internal immutable gpc;
     address public starAddress;
@@ -110,9 +110,6 @@ contract MSC is ExcludedFromFeeList, BaseGpc, ReentrancyGuard, ERC20 {
 
     function setMorningStarAddress(address _starAddress) external onlyOwner {
         require(_starAddress != address(0), "Invalid address");
-        _approve(address(this), _starAddress, type(uint256).max);
-        _approve(_starAddress, _ROUTER, type(uint256).max);
-        excludeFromFee(_starAddress);
         starAddress = _starAddress;
         emit AddressUpdated(_starAddress);
     }
@@ -165,9 +162,6 @@ contract MSC is ExcludedFromFeeList, BaseGpc, ReentrancyGuard, ERC20 {
             _isExcludedFromFee[recipient] ||
             inSwapAndLiquify
         ) {
-            if (sender == starAddress && !isPair(recipient)) {
-                tOwnedStar[recipient] += amount;
-            }
             super._transfer(sender, recipient, amount);
             _afterTokenTransferSelf(sender, recipient, amount);
             return;
@@ -190,8 +184,17 @@ contract MSC is ExcludedFromFeeList, BaseGpc, ReentrancyGuard, ERC20 {
             handlerTranscation(sender, recipient, amount, isSell);
         } else {
             // 非买卖，直接转账
+            if(sender==starAddress){
+                lastBuyTime[recipient] = uint40(block.timestamp);
+            }else{
+                if(lastBuyTime[recipient]<lastBuyTime[sender]){
+                    lastBuyTime[recipient] = lastBuyTime[sender];
+                }
+            }
+            if(recipient==starAddress){
+                require(block.timestamp >= lastBuyTime[sender] + coldTime, "cold");
+            }
             super._transfer(sender, recipient, amount);
-
             _afterTokenTransferSelf(sender, recipient, amount);
             return;
         }
@@ -234,49 +237,7 @@ contract MSC is ExcludedFromFeeList, BaseGpc, ReentrancyGuard, ERC20 {
             lastBuyTime[recipient] = uint40(block.timestamp);
         } else {
             require(block.timestamp >= lastBuyTime[sender] + coldTime, "cold");
-            uint256 profit = 0;
-            if (sender != tx.origin) {
-                if (tOwnedStar[tx.origin] >= transferAmount) {
-                    unchecked {
-                        tOwnedStar[tx.origin] =
-                            tOwnedStar[tx.origin] -
-                            transferAmount;
-                    }
-                } else if (
-                    tOwnedStar[tx.origin] > 0 &&
-                    tOwnedStar[tx.origin] < transferAmount
-                ) {
-                    profit = transferAmount - tOwnedStar[tx.origin];
-                    tOwnedStar[tx.origin] = 0;
-                } else {
-                    profit = transferAmount;
-                    tOwnedStar[tx.origin] = 0;
-                }
-            } else {
-                if (tOwnedStar[sender] >= transferAmount) {
-                    unchecked {
-                        tOwnedStar[sender] =
-                            tOwnedStar[sender] -
-                            transferAmount;
-                    }
-                } else if (
-                    tOwnedStar[sender] > 0 &&
-                    tOwnedStar[sender] < transferAmount
-                ) {
-                    profit = transferAmount - tOwnedStar[sender];
-                    tOwnedStar[sender] = 0;
-                } else {
-                    profit = transferAmount;
-                    tOwnedStar[sender] = 0;
-                }
-            }
-
-            uint256 profitFee = (profit * 25) / 100;
-
-            if (profitFee > 0) {
-                super._transfer(sender, marketAddress, profitFee);
-                transferAmount = transferAmount - profitFee;
-            }
+            
         }
         // 买卖操作：扣除3%手续费
         uint256 totalFee = (transferAmount * TOTAL_TRADE_FEE) / 1000;

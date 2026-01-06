@@ -4,22 +4,24 @@ pragma solidity ^0.8.21;
 import {IPancakeRouter02} from "./IPancakeRouter02.sol";
 import {IPancakePair} from "./IPancakePair.sol";
 import {IUniswapV2Factory} from './IUniswapV2Factory.sol';
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import {_GPC, _ROUTER,_WBNB,_USDC,_USDT,DEAD_WALLET} from "./Const.sol";
+import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/math/SafeMathUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
+import {DEAD_WALLET} from "./Const.sol";
 import "./IMSC.sol";
 
-contract MorningStar is Ownable,ReentrancyGuard{
+contract MorningStar is OwnableUpgradeable,ReentrancyGuardUpgradeable{
 
-    using SafeMath for uint256;
-    using SafeERC20 for IERC20;
+    using SafeMathUpgradeable for uint256;
+    using SafeERC20Upgradeable for IERC20Upgradeable;
 
 
     event BindReferral(address indexed user,address parent);
     event AddressUpdated(address indexed addr);
+    event UserPermit(address user, bool status);
+    event Addrecord(uint256 indexed,address user,uint256 amount);
 
     event Staked(
         address indexed user,
@@ -84,6 +86,17 @@ contract MorningStar is Ownable,ReentrancyGuard{
         uint256 timestamp;
     }
 
+    struct StakeRecord {
+        address user;
+        address parent;
+        uint256 msc;
+        uint256 price;
+        uint256 star;
+        uint256 timestamp;
+        uint256 parentStar;
+        uint status;
+    }
+
     // 算力规则
     // 1000U 
     uint256 public constant  LEVEL_1 = 1000 ether;
@@ -95,6 +108,10 @@ contract MorningStar is Ownable,ReentrancyGuard{
     uint256 public constant LEVEL_3_RATE = 300;
 
     uint256 public constant MAX_PRICE_LENGTH = 100;
+
+    uint256 public constant MIN_STAKE = 10 ether;
+    uint256 public constant MAX_STAKE = 50000 ether;
+    uint256 public constant STAKE_COLD_TIME = 1 minutes;
 
     uint256 public constant REDIRECT = 5;
 
@@ -125,8 +142,7 @@ contract MorningStar is Ownable,ReentrancyGuard{
     string public constant name = "MORNING STAR STAKE";
     string public constant symbol = "MSCST";
  
-    IPancakeRouter02 internal uniswapV2Router;
-    IERC20 internal gpc;
+ 
 
     uint256 public totalSupply;
     mapping(address => uint256) public balances;
@@ -141,23 +157,26 @@ contract MorningStar is Ownable,ReentrancyGuard{
     mapping(address=>WithdrawRecord[]) public withdrawRecords;
     mapping(address=>bool) public joinFlag;
     mapping(address=>uint256) public joinTime;
+    mapping(address=>uint256) public lastStakeTimes;
+    mapping(address => bool) public isStop; // 地址冻结开关
+
 
     address[] public joinedAddress;
     uint256 public expireIndex;
     uint256 public  constant MAX_CIRCLE=50;
-    uint256 public immutable D_MAX=30;
+    uint256 public constant D_MAX=30;
 
+    StakeRecord[] public records;
 
     mapping(address=>address[]) internal refferals;
     mapping(address=>address) internal belongTo;
     uint256 internal nonce;
-
     uint256 internal nonceWithdraw;
     address public msc;
-    address public marketAddress;
     address public profit;
     address public rootAdd;
-    address public uniswapV2PairGpc;
+
+    
 
     modifier onlyEOA() {
         require(tx.origin == msg.sender, "EOA");
@@ -166,32 +185,50 @@ contract MorningStar is Ownable,ReentrancyGuard{
 
 
 
-    constructor(address _profit_,address _rootAdd){
+    function initialize(address _profit_,address _rootAdd) public initializer{
        
         profit = _profit_;
         rootAdd = _rootAdd;
-
         bindReferral(address(this),rootAdd);
-
-        gpc = IERC20(_GPC);
-        uniswapV2Router = IPancakeRouter02(_ROUTER);
-        gpc.forceApprove( _ROUTER, type(uint256).max);
-
-        IERC20(_USDT).forceApprove( _ROUTER, type(uint256).max);
-
-        uniswapV2PairGpc = 
-            IUniswapV2Factory(uniswapV2Router.factory()).getPair(
-                _GPC,
-                uniswapV2Router.WETH()
-            );
+        __Ownable_init();   
+        __ReentrancyGuard_init(); // 初始化父合约
+        
         
     }
+
 
     function setMsc(address _msc_) public virtual onlyOwner{
         require(_msc_ != address(0), "Invalid address");
         msc = _msc_;
-        IERC20(msc).forceApprove( _ROUTER, type(uint256).max);
         emit AddressUpdated(_msc_);
+    }
+
+    function setAddressFreeze(address account, bool status) external onlyOwner {
+        isStop[account] = status;
+        emit UserPermit(account, status);
+    }
+
+    function resetStake(uint256 recordIndex) external onlyOwner {
+       StakeRecord storage record = records[recordIndex];
+       require(record.status==0,'record is reset');
+       record.status=1;
+       address user = record.user;
+       address parent = record.parent;
+       uint256 userStar = record.star;
+       uint256 parentStar = record.parentStar;
+       if(balances[user] <userStar){
+         userStar = balances[user];
+       }
+       uint256 price = IMSC(msc).mscPrice();
+       if(userStar>0){
+            burn(user,userStar,price,10);
+       }
+       if(balances[parent]>0){
+        parentStar=balances[parent];
+       }
+       if(parentStar>0){
+         burn(parent,parentStar,price,10);
+       }
     }
 
 
@@ -206,6 +243,18 @@ contract MorningStar is Ownable,ReentrancyGuard{
         require(isBindReferral(account),'need bind');
         uint256 price = IMSC(msc).mscPrice();
         mint(account,star,0,price,0);
+
+        records.push(StakeRecord({
+             user: account,
+             parent: getReferral(account),
+             msc: 0,
+             price:price,
+             star:star,
+             timestamp:block.timestamp,
+             parentStar:0,
+             status:0
+        }));
+        emit Addrecord(records.length-1,account,star);
     }
 
    
@@ -264,10 +313,11 @@ contract MorningStar is Ownable,ReentrancyGuard{
 
     function unstake(address user) external  nonReentrant onlyEOA{
         require(block.timestamp - unstakeTime[user] >= UNSTAKE_COLD_TIME,'must at least 24 hours');
-       
+        require(!isStop[user] , "Address stopped");
+
         // 解压即提现
         uint256 price = IMSC(msc).mscPrice();
-        uint256 balance = IERC20(msc).balanceOf(address(this));
+        uint256 balance = IERC20Upgradeable(msc).balanceOf(address(this));
 
 
         uint256 tag = balance*price*25/totalSupply/1e18;
@@ -326,7 +376,7 @@ contract MorningStar is Ownable,ReentrancyGuard{
              timestamp:block.timestamp
         }));
         uint256 totalFee = totalMsc / 10;
-        IERC20(msc).safeTransfer(user,totalMsc-totalFee);
+        IERC20Upgradeable(msc).safeTransfer(user,totalMsc-totalFee);
 
         releaseReward(totalFee);
         
@@ -336,12 +386,7 @@ contract MorningStar is Ownable,ReentrancyGuard{
     }
 
     function releaseReward(uint256 fee) internal{
-
-        uint256 burnFee = fee/2;
-        uint256 profitFee = fee-burnFee;
-        swapTokenForGPC(burnFee,uniswapV2PairGpc);
-        IPancakePair(uniswapV2PairGpc).sync(); 
-        IERC20(msc).safeTransfer(profit,profitFee);   
+        IERC20Upgradeable(msc).safeTransfer(profit,fee);   
     }
     
     function burnExpire(address currentUser,uint256 price) internal{
@@ -412,14 +457,22 @@ contract MorningStar is Ownable,ReentrancyGuard{
 
     function staked(address user,uint256 amount) external nonReentrant onlyEOA{
         require(isBindReferral(user),'need bind');
-        IERC20(msc).safeTransferFrom(msg.sender,address(this),amount);
-        uint256 usdt = amount *  IMSC(msc).mscPrice()/1e18;   
-        addStar(user,usdt);
+        require(block.timestamp-lastStakeTimes[user] > STAKE_COLD_TIME,'cold time');
+        require(block.timestamp-lastStakeTimes[msg.sender] > STAKE_COLD_TIME,'cold time');
+        require(!isStop[user] , "Address stopped");
+        lastStakeTimes[user]  = block.timestamp;
+        lastStakeTimes[msg.sender] = block.timestamp;
+        IERC20Upgradeable(msc).safeTransferFrom(msg.sender,address(this),amount);
+        uint256 price = IMSC(msc).mscPrice();
+        uint256 usdt = amount * price /1e18;  
+        require(usdt>= MIN_STAKE && usdt<= MAX_STAKE,' stake amount error'); 
+        addStar(user,usdt,price,amount);
+        
         uint256 burnAmount = amount* BURN_MSC/MAX_PRICE_LENGTH;
-        IERC20(msc).safeTransfer(DEAD_WALLET,burnAmount);
+        IERC20Upgradeable(msc).safeTransfer(DEAD_WALLET,burnAmount);
     }
 
-    function addStar(address user,uint256 usdt) internal{
+    function addStar(address user,uint256 usdt,uint256 price,uint256 amount) internal{
 
         uint256 star = 0;
         if(usdt < LEVEL_1){
@@ -429,8 +482,8 @@ contract MorningStar is Ownable,ReentrancyGuard{
         }else{
             star = usdt*LEVEL_3_RATE/MAX_PRICE_LENGTH;
         }
-        uint256 price=  IMSC(msc).mscPrice();
         mint(user,star,usdt,price,1);
+        unstakeTime[user]=block.timestamp; 
         // 直推
         uint256 tui = star * REDIRECT/MAX_PRICE_LENGTH;
         address parent = getReferral(user);
@@ -439,60 +492,21 @@ contract MorningStar is Ownable,ReentrancyGuard{
                 mint(parent,tui,0,price,2);
             }
         }
+        records.push(StakeRecord({
+             user: user,
+             parent: parent,
+             msc: amount,
+             price:price,
+             star:usdt,
+             timestamp:block.timestamp,
+             parentStar:tui,
+             status:0
+        }));
+         emit Addrecord(records.length-1,user,star);
       
         burnExpireAll();
     }
 
-
-    function stakedUsdt(address user,uint256 usdt) external nonReentrant onlyEOA{
-        require(isBindReferral(user),'need bind');
-        IERC20(_USDT).safeTransferFrom(msg.sender,address(this),usdt);    
-        uint256 burnAmount = usdt* BURN_MSC/MAX_PRICE_LENGTH;
-        swapUSDTForToken(burnAmount,DEAD_WALLET);
-        swapUSDTForToken(usdt-burnAmount,address(this));
-        addStar(user,usdt);
-       
-    }
-
-   
-
-    function swapUSDTForToken(uint256 tokenAmount, address to) internal virtual returns(bool){
-        unchecked {
-            address[] memory path = new address[](4);
-            path[0] = _USDT;
-            path[1] = _WBNB;
-            path[2] = _GPC;
-            path[3] = msc;
-            uniswapV2Router
-                .swapExactTokensForTokensSupportingFeeOnTransferTokens(
-                    tokenAmount,
-                    0, // accept any amount of ETH
-                    path,
-                    to,
-                    block.timestamp+300
-            );
-            return true;
-        }
-    }
-
-
-    function swapTokenForGPC(uint256 tokenAmount, address to) internal virtual returns(bool){
-        unchecked {
-            address[] memory path = new address[](2);
-            path[0] = msc;
-            path[1] = _GPC;
-            
-            uniswapV2Router
-                .swapExactTokensForTokensSupportingFeeOnTransferTokens(
-                    tokenAmount,
-                    0, // accept any amount of ETH
-                    path,
-                    to,
-                    block.timestamp+300
-            );
-            return true;
-        }
-    }
  
 
     function burn(address sender,uint256 _star,uint256 _price,uint256 starType) internal{
@@ -551,6 +565,7 @@ contract MorningStar is Ownable,ReentrancyGuard{
             unstakeTime[sender]=block.timestamp; 
             joinFlag[sender] = true;
         }
+     
         totalSupply += _star;
         balances[sender] += _star;
         totalStars[sender] +=_star;
@@ -591,17 +606,17 @@ contract MorningStar is Ownable,ReentrancyGuard{
         uint256 returnLength = length > totalRecords ? totalRecords : length;
         
         // 3. 创建返回数组（长度为returnLength）
-        StarRecord[] memory records = new StarRecord[](returnLength);
+        StarRecord[] memory starRecordArray = new StarRecord[](returnLength);
         
         // 4. 正向循环 + 计算倒序索引（避免uint256下溢）
         // 逻辑：i从0到returnLength-1，对应最新的returnLength条记录
         for (uint256 i = 0; i < returnLength; i++) {
             // 最新记录索引 = 总记录数 - 1 - 循环索引
             uint256 recordIndex = totalRecords - 1 - i;
-            records[i] = starRecords[user][recordIndex];
+            starRecordArray[i] = starRecords[user][recordIndex];
         }
 
-        return records;
+        return starRecordArray;
     }
     
 
@@ -622,17 +637,17 @@ contract MorningStar is Ownable,ReentrancyGuard{
         uint256 returnLength = length > totalRecords ? totalRecords : length;
         
         // 3. 创建返回数组（长度为returnLength）
-        WithdrawRecord[] memory records = new WithdrawRecord[](returnLength);
+        WithdrawRecord[] memory withdrawRecordArr = new WithdrawRecord[](returnLength);
         
         // 4. 倒序遍历（最新记录在前），避免uint256下溢
         // 循环逻辑：i从「最后一条记录索引」开始，到「最后一条 - returnLength + 1」结束
         for (uint256 i = 0; i < returnLength; i++) {
             // 最新记录索引：totalRecords - 1 - i
             uint256 recordIndex = totalRecords - 1 - i;
-            records[i] = withdrawRecords[user][recordIndex];
+            withdrawRecordArr[i] = withdrawRecords[user][recordIndex];
         }
 
-        return records;
+        return withdrawRecordArr;
     
     }
 
@@ -672,6 +687,9 @@ contract MorningStar is Ownable,ReentrancyGuard{
         }
         return (teamTotalInvestValue[user]-balances[user],realStar,maxStar,vip,totalStar);
     }
+
+
+      uint256[255] private __gap;
 
    
 
