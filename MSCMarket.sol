@@ -24,9 +24,9 @@ contract MSCMarket is OwnableUpgradeable,ReentrancyGuardUpgradeable{
     uint256 public constant SELL_PRICE = 5;
     uint256 public constant BUY_PRICE = 10;
 
-    uint256 public constant FOR_GPC_COLD=30 minutes;
+    uint256 public constant FOR_GPC_COLD=60 minutes;
     uint256 public constant FOR_MAX_GPC = 100 ether;
-    uint256 public constant FOR_GPC_RATE=1;
+    uint256 public constant FOR_GPC_RATE=10;
     uint256 public lastGPC;
 
 

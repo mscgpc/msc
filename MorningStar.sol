@@ -451,7 +451,7 @@ contract MorningStar is OwnableUpgradeable,ReentrancyGuardUpgradeable{
     }
 
     function dealReceive() internal view{
-        require(msg.sender==address(this),'not support');
+        //require(msg.sender==address(this),'not support');
     }
 
 
