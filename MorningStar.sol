@@ -10,7 +10,7 @@ import "@openzeppelin/contracts-upgradeable/utils/math/SafeMathUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import {DEAD_WALLET} from "./Const.sol";
-import "./IMSC.sol";
+import "./IMSCOracle.sol";
 
 contract MorningStar is OwnableUpgradeable,ReentrancyGuardUpgradeable{
 
@@ -173,6 +173,7 @@ contract MorningStar is OwnableUpgradeable,ReentrancyGuardUpgradeable{
     uint256 internal nonce;
     uint256 internal nonceWithdraw;
     address public msc;
+    address public oracle;
     address public profit;
     address public rootAdd;
 
@@ -182,8 +183,6 @@ contract MorningStar is OwnableUpgradeable,ReentrancyGuardUpgradeable{
         require(tx.origin == msg.sender, "EOA");
         _;
     }
-
-
 
     function initialize(address _profit_,address _rootAdd) public initializer{
        
@@ -208,6 +207,13 @@ contract MorningStar is OwnableUpgradeable,ReentrancyGuardUpgradeable{
         emit UserPermit(account, status);
     }
 
+      function setOracle(address _oracle_) public virtual onlyOwner{
+        require(_oracle_ != address(0), "Invalid address");
+        oracle = _oracle_;
+        emit AddressUpdated(_oracle_);
+     
+    }
+
     function resetStake(uint256 recordIndex) external onlyOwner {
        StakeRecord storage record = records[recordIndex];
        require(record.status==0,'record is reset');
@@ -219,7 +225,7 @@ contract MorningStar is OwnableUpgradeable,ReentrancyGuardUpgradeable{
        if(balances[user] <userStar){
          userStar = balances[user];
        }
-       uint256 price = IMSC(msc).mscPrice();
+       uint256 price = IMSCOracle(msc).mscPrice();
        if(userStar>0){
             burn(user,userStar,price,10);
        }
@@ -241,7 +247,7 @@ contract MorningStar is OwnableUpgradeable,ReentrancyGuardUpgradeable{
 
     function syncBalance(address account,uint256 star) external onlyOwner{
         require(isBindReferral(account),'need bind');
-        uint256 price = IMSC(msc).mscPrice();
+        uint256 price = IMSCOracle(msc).mscPrice();
         mint(account,star,0,price,0);
 
         records.push(StakeRecord({
@@ -316,7 +322,7 @@ contract MorningStar is OwnableUpgradeable,ReentrancyGuardUpgradeable{
         require(!isStop[user] , "Address stopped");
 
         // 解压即提现
-        uint256 price = IMSC(msc).mscPrice();
+        uint256 price = IMSCOracle(msc).mscPrice();
         uint256 balance = IERC20Upgradeable(msc).balanceOf(address(this));
 
 
@@ -414,7 +420,7 @@ contract MorningStar is OwnableUpgradeable,ReentrancyGuardUpgradeable{
         }
 
         // 2. 获取MSC价格（循环外获取，保证批量处理价格一致）
-        uint256 price = IMSC(msc).mscPrice();
+        uint256 price = IMSCOracle(msc).mscPrice();
         require(price > 0, "Staking: MSC price is zero"); // 价格零值校验
 
         // 3. 安全循环：限制最大次数，避免Gas超限
@@ -463,7 +469,7 @@ contract MorningStar is OwnableUpgradeable,ReentrancyGuardUpgradeable{
         lastStakeTimes[user]  = block.timestamp;
         lastStakeTimes[msg.sender] = block.timestamp;
         IERC20Upgradeable(msc).safeTransferFrom(msg.sender,address(this),amount);
-        uint256 price = IMSC(msc).mscPrice();
+        uint256 price = IMSCOracle(msc).mscPrice();
         uint256 usdt = amount * price /1e18;  
         require(usdt>= MIN_STAKE && usdt<= MAX_STAKE,' stake amount error'); 
         addStar(user,usdt,price,amount);

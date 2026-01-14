@@ -9,7 +9,7 @@ import "@openzeppelin/contracts-upgradeable/utils/math/SafeMathUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import {_GPC, _ROUTER,_WBNB,_USDC,_USDT,DEAD_WALLET} from "./Const.sol";
-import "./IMSC.sol";
+import "./IMSCOracle.sol";
 
 contract MSCMarket is OwnableUpgradeable,ReentrancyGuardUpgradeable{
 
@@ -42,6 +42,7 @@ contract MSCMarket is OwnableUpgradeable,ReentrancyGuardUpgradeable{
 
     uint256 public lastPrice;
     address public profitUser;
+    address public oracle;
 
     function initialize(address _profit)public initializer{
       
@@ -71,11 +72,17 @@ contract MSCMarket is OwnableUpgradeable,ReentrancyGuardUpgradeable{
      
     }
 
+    function setOracle(address _oracle_) public virtual onlyOwner{
+        require(_oracle_ != address(0), "Invalid address");
+        oracle = _oracle_;
+        emit AddressUpdated(_oracle_);
+     
+    }
+
 
     function  setPrice() external nonReentrant{
-        require(msg.sender==msc,'msc error');
         if(lastPrice==0){
-            lastPrice = IMSC(msc).mscPriceTime(15 minutes);
+            lastPrice = IMSCOracle(msc).mscPriceTime(15 minutes);
             return;
         }
         // 触发交易
@@ -86,10 +93,10 @@ contract MSCMarket is OwnableUpgradeable,ReentrancyGuardUpgradeable{
                 uint256 fee = IERC20Upgradeable(msc).balanceOf(address(this))* SELL_RATE/1000;
                 swapTokenForUSDT(fee,address(this));
             }
-            lastPrice = IMSC(msc).mscPriceTime(15 minutes);
+            lastPrice = IMSCOracle(oracle).mscPriceTime(15 minutes);
             return;
         }
-        uint256 currentPrice =IMSC(msc).mscPriceTime(15 minutes);
+        uint256 currentPrice =IMSCOracle(msc).mscPriceTime(15 minutes);
         if(currentPrice>=lastPrice*(100+SELL_PRICE)/100){
             if(IERC20Upgradeable(msc).balanceOf(address(this))>0){
                 uint256 fee = IERC20Upgradeable(msc).balanceOf(address(this))* SELL_RATE/1000;       

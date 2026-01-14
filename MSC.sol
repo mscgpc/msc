@@ -46,15 +46,12 @@ contract MSC is ExcludedFromFeeList, BaseGpc, ReentrancyGuard, ERC20 {
 
     IERC20 internal immutable gpc;
     address public starAddress;
-    address public marketAddress;
-
+   
     // ========================= 事件 =========================
     event LaunchCompleted(uint256 timestamp);
 
     event UserPermit(address user, bool status);
-    event BurnExpireAllFailed(address starAddress);
-    event SetPriceFailed(address market);
-    event RemoteFailed(address starAddress);
+    
 
     event TradeFeesDistributed(
         address indexed sender,
@@ -114,14 +111,7 @@ contract MSC is ExcludedFromFeeList, BaseGpc, ReentrancyGuard, ERC20 {
         emit AddressUpdated(_starAddress);
     }
 
-    function setMarketAddress(address _marketAddress) external onlyOwner {
-        require(_marketAddress != address(0), "Invalid address");
-        _approve(address(this), _marketAddress, type(uint256).max);
-        _approve(_marketAddress, _ROUTER, type(uint256).max);
-        excludeFromFee(_marketAddress);
-        marketAddress = _marketAddress;
-        emit AddressUpdated(_marketAddress);
-    }
+   
 
     function setAddressFreeze(address account, bool status) external onlyOwner {
         isStop[account] = status;
@@ -270,22 +260,7 @@ contract MSC is ExcludedFromFeeList, BaseGpc, ReentrancyGuard, ERC20 {
                 rewardAmount
             );
         }
-        genMscPrice();
-
-        (bool success, ) = starAddress.call(
-            abi.encodeWithSignature("burnExpireAll()")
-        );
-        if (!success) {
-            // 比如 emit 日志，或执行兜底逻辑，避免整个买入/卖出流程回滚
-            emit BurnExpireAllFailed(starAddress);
-        }
-        (bool success2, ) = marketAddress.call(
-            abi.encodeWithSignature("setPrice()")
-        );
-        if (!success2) {
-            emit SetPriceFailed(marketAddress);
-        }
-
+        
         // ====================== 后续逻辑（保留不变，仅适配isLpAdd） =======================
         if (isSell) {
             _processPendingBurn();
