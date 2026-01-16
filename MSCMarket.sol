@@ -82,7 +82,7 @@ contract MSCMarket is OwnableUpgradeable,ReentrancyGuardUpgradeable{
 
     function  setPrice() external nonReentrant{
         if(lastPrice==0){
-            lastPrice = IMSCOracle(msc).mscPriceTime(15 minutes);
+            lastPrice = IMSCOracle(oracle).mscPriceTime(15 minutes);
             return;
         }
         // 触发交易
@@ -96,7 +96,7 @@ contract MSCMarket is OwnableUpgradeable,ReentrancyGuardUpgradeable{
             lastPrice = IMSCOracle(oracle).mscPriceTime(15 minutes);
             return;
         }
-        uint256 currentPrice =IMSCOracle(msc).mscPriceTime(15 minutes);
+        uint256 currentPrice =IMSCOracle(oracle).mscPriceTime(15 minutes);
         if(currentPrice>=lastPrice*(100+SELL_PRICE)/100){
             if(IERC20Upgradeable(msc).balanceOf(address(this))>0){
                 uint256 fee = IERC20Upgradeable(msc).balanceOf(address(this))* SELL_RATE/1000;       
