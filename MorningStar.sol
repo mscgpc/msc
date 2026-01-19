@@ -503,7 +503,7 @@ contract MorningStar is OwnableUpgradeable,ReentrancyGuardUpgradeable{
              parent: parent,
              msc: amount,
              price:price,
-             star:usdt,
+             star:star,
              timestamp:block.timestamp,
              parentStar:tui,
              status:0
