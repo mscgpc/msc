@@ -57,8 +57,8 @@ contract MSCOracle is OwnableUpgradeable, ReentrancyGuardUpgradeable {
             IUniswapV2Factory(factory).getPair(_USDT, uniswapV2Router.WETH())
         );
         uniswapV2Pair = IUniswapV2Factory(factory).getPair(
-            _GPC,
-            uniswapV2Router.WETH()
+            _msc_,
+            _GPC
         );
         __Ownable_init();
         __ReentrancyGuard_init(); // 初始化父合约
