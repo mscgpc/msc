@@ -229,7 +229,7 @@ contract MorningStar is OwnableUpgradeable,ReentrancyGuardUpgradeable{
        if(userStar>0){
             burn(user,userStar,price,10);
        }
-       if(balances[parent]>0){
+       if(balances[parent] < parentStar){
         parentStar=balances[parent];
        }
        if(parentStar>0){
